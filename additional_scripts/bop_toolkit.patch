@@ -1,0 +1,327 @@
+diff --git a/bop_toolkit_lib/dataset_params.py b/bop_toolkit_lib/dataset_params.py
+index c2c41ec..6fcc958 100644
+--- a/bop_toolkit_lib/dataset_params.py
++++ b/bop_toolkit_lib/dataset_params.py
+@@ -86,6 +86,7 @@ def get_model_params(datasets_path, dataset_name, model_type=None):
+     'hb': list(range(1, 34)),  # Full HB dataset.
+     'ycbv': list(range(1, 22)),
+     'hope': list(range(1, 29)),
++    'synpick': list(range(1, 22)),
+   }[dataset_name]
+ 
+   # ID's of objects with ambiguous views evaluated using the ADI pose error
+@@ -104,6 +105,7 @@ def get_model_params(datasets_path, dataset_name, model_type=None):
+     'hb': [6, 10, 11, 12, 13, 14, 18, 24, 29],
+     'ycbv': [1, 13, 14, 16, 18, 19, 20, 21],
+     'hope': None,  # Not defined yet.
++    'synpick': [1, 13, 14, 16, 18, 19, 20, 21],
+   }[dataset_name]
+ 
+   # T-LESS includes two types of object models, CAD and reconstructed.
+@@ -122,6 +124,7 @@ def get_model_params(datasets_path, dataset_name, model_type=None):
+ 
+   # Path to the folder with object models.
+   models_path = join(datasets_path, dataset_name, models_folder_name)
++  sdf_models_path = join(datasets_path, dataset_name, 'models_sdf_128')
+ 
+   p = {
+     # ID's of all objects included in the dataset.
+@@ -134,7 +137,10 @@ def get_model_params(datasets_path, dataset_name, model_type=None):
+     'model_tpath': join(models_path, 'obj_{obj_id:06d}.ply'),
+ 
+     # Path to a file with meta information about the object models.
+-    'models_info_path': join(models_path, 'models_info.json')
++    'models_info_path': join(models_path, 'models_info.json'),
++
++    # Path template to an object SDF file
++    'sdf_tpath': join(sdf_models_path, 'obj_{obj_id:06d}.npz'),
+   }
+ 
+   return p
+@@ -373,6 +379,13 @@ def get_split_params(datasets_path, dataset_name, split, split_type=None):
+       p['azimuth_range'] = None  # Not calculated yet.
+       p['elev_range'] = None  # Not calculated yet.
+ 
++  # Synpick dataset
++  elif dataset_name == 'synpick':
++    rgb_ext = '.jpg'
++    p['scene_ids'] = None
++
++    p['im_size'] = (1920, 1080)
++
+   else:
+     raise ValueError('Unknown BOP dataset ({}).'.format(dataset_name))
+ 
+@@ -425,6 +438,9 @@ def get_split_params(datasets_path, dataset_name, split, split_type=None):
+       '{im_id:06d}_{gt_id:06d}.png'),
+   })
+ 
++  if p['scene_ids'] is None:
++    p['scene_ids'] = get_present_scene_ids(p)
++
+   return p
+ 
+ 
+diff --git a/bop_toolkit_lib/inout.py b/bop_toolkit_lib/inout.py
+index 9cece84..d78b608 100644
+--- a/bop_toolkit_lib/inout.py
++++ b/bop_toolkit_lib/inout.py
+@@ -749,3 +749,16 @@ def save_ply2(path, pts, pts_colors=None, pts_normals=None, faces=None,
+       f.write('\n')
+ 
+   f.close()
++
++
++def load_sdf(path):
++  """Loads SDF model from an NPZ file.
++
++  :param path: Path to a NPZ file.
++  :return: The loaded model given by a dictionary with items:
++   - sdf: the 3D grid containing the SDF values for the object
++   - scale: the scaling factor between normalized SDF
++            (voxels range from -1 to 1) and the original vertex coordinates
++   - offset: offset of the SDF centroid in mesh coordinates
++  """
++  return dict(np.load(path))
+diff --git a/bop_toolkit_lib/misc.py b/bop_toolkit_lib/misc.py
+index 8ec829f..bff2741 100644
+--- a/bop_toolkit_lib/misc.py
++++ b/bop_toolkit_lib/misc.py
+@@ -350,7 +350,7 @@ def get_error_signature(error_type, n_top, **kwargs):
+   return error_sign
+ 
+ 
+-def get_score_signature(correct_th, visib_gt_min):
++def get_score_signature(correct_th, visib_gt_min, visib_gt_max=-1):
+   """Generates a signature for a performance score.
+ 
+   :param visib_gt_min: Minimum visible surface fraction of a valid GT pose.
+@@ -358,6 +358,8 @@ def get_score_signature(correct_th, visib_gt_min):
+   """
+   eval_sign = 'th=' + '-'.join(['{:.3f}'.format(t) for t in correct_th])
+   eval_sign += '_min-visib={:.3f}'.format(visib_gt_min)
++  if visib_gt_max >= 0.:
++      eval_sign += '_max-visib={:.3f}'.format(visib_gt_max)
+   return eval_sign
+ 
+ 
+diff --git a/scripts/eval_bop19_pose.py b/scripts/eval_bop19_pose.py
+old mode 100644
+new mode 100755
+index 525058d..e49d12f
+--- a/scripts/eval_bop19_pose.py
++++ b/scripts/eval_bop19_pose.py
+@@ -35,6 +35,7 @@ p = {
+         'tyol': 15,
+         'ycbv': 15,
+         'hope': 15,
++        'synpick': 15,
+       },
+       'vsd_taus': list(np.arange(0.05, 0.51, 0.05)),
+       'vsd_normalized_by_diameter': True,
+@@ -50,12 +51,28 @@ p = {
+       'type': 'mspd',
+       'correct_th': [[th] for th in np.arange(5, 51, 5)]
+     },
++    {
++      'n_top': -1,
++      'type': 'ad',
++      'correct_th': [[0.02], [0.05], [0.1]]
++    },
++    {
++      'n_top': -1,
++      'type': 'add',
++      'correct_th': [[0.02], [0.05], [0.1]]
++    },
++    {
++      'n_top': -1,
++      'type': 'adi',
++      'correct_th': [[0.02], [0.05], [0.1]]
++    },
+   ],
+ 
+-  # Minimum visible surface fraction of a valid GT pose.
++  # Minimum/maximum visible surface fraction of a valid GT pose.
+   # -1 == k most visible GT poses will be considered, where k is given by
+   # the "inst_count" item loaded from "targets_filename".
+   'visib_gt_min': -1,
++  'visib_gt_max': [-1, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+ 
+   # See misc.get_symmetry_transformations().
+   'max_sym_disc_step': 0.01,
+@@ -116,8 +133,8 @@ for result_filename in p['result_filenames']:
+   average_recalls = {}
+ 
+   # Name of the result and the dataset.
+-  result_name = os.path.splitext(os.path.basename(result_filename))[0]
+-  dataset = str(result_name.split('_')[1].split('-')[0])
++  result_name = os.path.splitext(result_filename)[0]
++  dataset = str(os.path.basename(result_name).split('_')[1].split('-')[0])
+ 
+   # Calculate the average estimation time per image.
+   ests = inout.load_bop_results(
+@@ -195,25 +212,27 @@ for result_filename in p['result_filenames']:
+     # Calculate performance scores.
+     for error_sign, error_dir_path in error_dir_paths.items():
+       for correct_th in error['correct_th']:
+-
+-        calc_scores_cmd = [
+-          'python',
+-          os.path.join(os.path.dirname(os.path.realpath(__file__)), 'eval_calc_scores.py'),
+-          '--error_dir_paths={}'.format(error_dir_path),
+-          '--eval_path={}'.format(p['eval_path']),
+-          '--targets_filename={}'.format(p['targets_filename']),
+-          '--visib_gt_min={}'.format(p['visib_gt_min'])
+-        ]
+-
+-        calc_scores_cmd += ['--correct_th_{}={}'.format(
+-          error['type'], ','.join(map(str, correct_th)))]
+-
+-        misc.log('Running: ' + ' '.join(calc_scores_cmd))
+-        if subprocess.call(calc_scores_cmd) != 0:
+-          raise RuntimeError('Calculation of scores failed.')
++        for visib_gt_max in p['visib_gt_max']:
++
++          calc_scores_cmd = [
++            'python',
++            os.path.join(os.path.dirname(os.path.realpath(__file__)), 'eval_calc_scores.py'),
++            '--error_dir_paths={}'.format(error_dir_path),
++            '--eval_path={}'.format(p['eval_path']),
++            '--targets_filename={}'.format(p['targets_filename']),
++            '--visib_gt_min={}'.format(p['visib_gt_min']),
++            '--visib_gt_max={}'.format(visib_gt_max)
++          ]
++  
++          calc_scores_cmd += ['--correct_th_{}={}'.format(
++            error['type'], ','.join(map(str, correct_th)))]
++  
++          misc.log('Running: ' + ' '.join(calc_scores_cmd))
++          if subprocess.call(calc_scores_cmd) != 0:
++            raise RuntimeError('Calculation of scores failed.')
+ 
+         # Path to file with calculated scores.
+-        score_sign = misc.get_score_signature(correct_th, p['visib_gt_min'])
++        score_sign = misc.get_score_signature(correct_th, p['visib_gt_min'], -1)
+ 
+         scores_filename = 'scores_{}.json'.format(score_sign)
+         scores_path = os.path.join(
+@@ -240,7 +259,7 @@ for result_filename in p['result_filenames']:
+ 
+   # Final score for the given dataset.
+   final_scores['bop19_average_recall'] = np.mean([
+-    average_recalls['vsd'], average_recalls['mssd'], average_recalls['mspd']])
++    average_recalls['vsd'], average_recalls['mspd'], average_recalls['mssd']])
+ 
+   # Average estimation time per image.
+   final_scores['bop19_average_time_per_image'] = average_time_per_image
+diff --git a/scripts/eval_calc_errors.py b/scripts/eval_calc_errors.py
+index 1448d2a..b60ac13 100644
+--- a/scripts/eval_calc_errors.py
++++ b/scripts/eval_calc_errors.py
+@@ -147,7 +147,7 @@ for result_filename in p['result_filenames']:
+   dataset_info = result_info[1].split('-')
+   dataset = str(dataset_info[0])
+   split = str(dataset_info[1])
+-  split_type = str(dataset_info[2]) if len(dataset_info) > 2 else None
++  split_type = '_'.join(dataset_info[2:]) if len(dataset_info) > 2 else None
+   split_type_str = ' - ' + split_type if split_type is not None else ''
+ 
+   # Load dataset parameters.
+@@ -391,7 +391,7 @@ for result_filename in p['result_filenames']:
+     def save_errors(_error_sign, _scene_errs):
+       # Save the calculated errors to a JSON file.
+       errors_path = p['out_errors_tpath'].format(
+-        eval_path=p['eval_path'], result_name=result_name,
++        eval_path=p['eval_path'], result_name=os.path.splitext(result_filename)[0],
+         error_sign=_error_sign, scene_id=scene_id)
+       misc.ensure_dir(os.path.dirname(errors_path))
+       misc.log('Saving errors to: {}'.format(errors_path))
+diff --git a/scripts/eval_calc_scores.py b/scripts/eval_calc_scores.py
+index 3b6389a..1ece586 100644
+--- a/scripts/eval_calc_scores.py
++++ b/scripts/eval_calc_scores.py
+@@ -56,10 +56,11 @@ p = {
+   # Pose errors that will be normalized the image width before thresholding.
+   'normalized_by_im_width': ['mspd'],
+ 
+-  # Minimum visible surface fraction of a valid GT pose.
++  # Minimum/maximum visible surface fraction of a valid GT pose.
+   # -1 == k most visible GT poses will be considered, where k is given by
+   # the "inst_count" item loaded from "targets_filename".
+   'visib_gt_min': -1,
++  'visib_gt_max': -1,
+ 
+   # Paths (relative to p['eval_path']) to folders with pose errors calculated
+   # using eval_calc_errors.py.
+@@ -107,6 +108,7 @@ parser.add_argument('--normalized_by_diameter',
+ parser.add_argument('--normalized_by_im_width',
+                     default=','.join(p['normalized_by_im_width']))
+ parser.add_argument('--visib_gt_min', default=p['visib_gt_min'])
++parser.add_argument('--visib_gt_max', default=p['visib_gt_max'])
+ parser.add_argument('--error_dir_paths', default=','.join(p['error_dir_paths']),
+                     help='Comma-sep. paths to errors from eval_calc_errors.py.')
+ parser.add_argument('--eval_path', default=p['eval_path'])
+@@ -126,6 +128,7 @@ for err_type in p['correct_th']:
+ p['normalized_by_diameter'] = args.normalized_by_diameter.split(',')
+ p['normalized_by_im_width'] = args.normalized_by_im_width.split(',')
+ p['visib_gt_min'] = float(args.visib_gt_min)
++p['visib_gt_max'] = float(args.visib_gt_max)
+ p['error_dir_paths'] = args.error_dir_paths.split(',')
+ p['eval_path'] = str(args.eval_path)
+ p['datasets_path'] = str(args.datasets_path)
+@@ -156,11 +159,11 @@ for error_dir_path in p['error_dir_paths']:
+   dataset_info = result_info[1].split('-')
+   dataset = dataset_info[0]
+   split = dataset_info[1]
+-  split_type = dataset_info[2] if len(dataset_info) > 2 else None
++  split_type = '_'.join(dataset_info[2:]) if len(dataset_info) > 2 else None
+ 
+   # Evaluation signature.
+   score_sign = misc.get_score_signature(
+-    p['correct_th'][err_type], p['visib_gt_min'])
++    p['correct_th'][err_type], p['visib_gt_min'], p['visib_gt_max'])
+ 
+   misc.log('Calculating score - error: {}, method: {}, dataset: {}.'.format(
+     err_type, method, dataset))
+@@ -214,13 +217,28 @@ for error_dir_path in p['error_dir_paths']:
+       im_gt = scene_gt[im_id]
+       im_gt_info = scene_gt_info[im_id]
+       scene_gt_valid[im_id] = [True] * len(im_gt)
+-      if p['visib_gt_min'] >= 0:
++      if p['visib_gt_min'] >= 0 and p['visib_gt_max'] >=0:
++        # All GT poses visible from at least 100 * p['visib_gt_min'] and at most 100 * p['visib_gt_max'] percent
++        # are considered valid.
++        for gt_id, gt in enumerate(im_gt):
++          is_target = gt['obj_id'] in im_targets.keys()
++          is_visib = (im_gt_info[gt_id]['visib_fract'] >= p['visib_gt_min']
++                      and im_gt_info[gt_id]['visib_fract'] <= p['visib_gt_max'])
++          scene_gt_valid[im_id][gt_id] = is_target and is_visib
++      elif p['visib_gt_min'] >= 0:
+         # All GT poses visible from at least 100 * p['visib_gt_min'] percent
+         # are considered valid.
+         for gt_id, gt in enumerate(im_gt):
+           is_target = gt['obj_id'] in im_targets.keys()
+           is_visib = im_gt_info[gt_id]['visib_fract'] >= p['visib_gt_min']
+           scene_gt_valid[im_id][gt_id] = is_target and is_visib
++      elif p['visib_gt_max'] >= 0:
++        # All GT poses visible from at most 100 * p['visib_gt_max'] percent
++        # are considered valid.
++        for gt_id, gt in enumerate(im_gt):
++          is_target = gt['obj_id'] in im_targets.keys()
++          is_visib = im_gt_info[gt_id]['visib_fract'] <= p['visib_gt_max']
++          scene_gt_valid[im_id][gt_id] = is_target and is_visib
+       else:
+         # k most visible GT poses are considered valid, where k is given by
+         # the "inst_count" item loaded from "targets_filename".
+diff --git a/scripts/show_performance_bop19.py b/scripts/show_performance_bop19.py
+index d835f71..fe54f48 100644
+--- a/scripts/show_performance_bop19.py
++++ b/scripts/show_performance_bop19.py
+@@ -35,6 +35,7 @@ p = {
+         'tyol': 15,
+         'ycbv': 15,
+         'hope': 15,
++        'synpick': 15,
+       },
+       'vsd_taus': list(np.arange(0.05, 0.51, 0.05)),
+       'correct_th': [[th] for th in np.arange(0.05, 0.51, 0.05)]

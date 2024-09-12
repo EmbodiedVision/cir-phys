@@ -1,0 +1,50 @@
+##
+## Copyright (c) 2022 Princeton Vision & Learning Lab
+## Copyright (c) 2024 Max Planck Society
+##
+## This source code is licensed under the MIT license found in the
+## LICENSE file in the root directory of this source tree.
+##
+name: cir_phys
+channels:
+  - pytorch
+  - nvidia
+  - pytorch3d
+  - pyg
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch=2.1.0
+  - torchvision
+  - pytorch-cuda
+  - pytorch3d
+  - plyfile==1.0.1
+  - pandas==2.0.3
+  - gin-config==0.5.0
+  - colored-traceback==0.3.0
+  - tqdm==4.65.0
+  - imageio==2.31.1
+  - tensorboard==2.13.0
+  - scipy==1.11.1
+  - fastcore==1.5.29
+  - joblib==1.3.0
+  - transforms3d==0.4.1
+  - matplotlib==3.4.3
+  - pytorch-scatter
+  - numpy==1.24.3
+  - mkl==2021.4.0
+  - pygments==2.15.1
+  - pyqt==5.15.9
+  - opencv==4.7.0
+  - trimesh
+  - pyrender
+  - pyglet<2
+  - vispy>=0.6.5
+  - pip
+  - pip:
+    - mesh2sdf
+    - lietorch @ git+https://github.com/princeton-vl/lietorch.git
+    - wget
+    - pypng
+    - ev-sdf-utils @ git+https://github.com/EmbodiedVision/ev-sdf-utils.git

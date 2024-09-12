@@ -1,0 +1,17 @@
+BOPObjectDataset.ds_dir = "local_data/bop_datasets/synpick"
+BOPDataset.ds_dir = "local_data/bop_datasets/synpick"
+Pytorch3DRenderer.dataset_name = "synpick"
+
+gin_globals.test_splits = [({'split':'test_pick_untargeted', "only_no_gripper": True}, 1)]
+
+load_detector.run_id = "detector-bop-ycbv-synt+real--292971"
+load_efficientnet.coarse_run_id = "coarse-bop-ycbv-synt+real--822463"
+
+gin_globals.dataset_name = "synpick"
+gin_globals.save_img_prob = 0.02
+
+get_detections.mask_th = 0.4
+get_detections.detection_th = 0.95
+
+crop_inputs.renderer = @Pytorch3DRenderer()
+generate_pose_from_detections.renderer = @Pytorch3DRenderer()

@@ -1,0 +1,46 @@
+CIR-Phys
+Copyright 2024 Max-Planck-Gesellschaft
+Licensed under the MIT License (see LICENSE)
+Code author: Michael Strecke, michael.strecke@tuebingen.mpg.de
+Embodied Vision Group, Max Planck Institute for Intelligent Systems
+
+
+-------------------
+
+The code in this repository is based on the CIR repository at
+https://github.com/princeton-vl/Coupled-Iterative-Refinement/tree/c50df7816714007c7f2f5188995807b3b396ad3d,
+licensed under the MIT License (see CIR-LICENSE).
+
+Additions/modifications to existing code were made in the following locations:
+
+- demo_batch.py and test_batch.py are based on demo.py and test.py from the repository mentioned above. Changes were
+  made to batch-process all detections in an image at once instead of iterating over the object detections. Additionally,
+  flags for activating the intersection constraint, using ground truth masks, and processing the synpick dataset were
+  added.
+- The following source files were added compared to the CIR repository:
+   convert_mesh_to_sdf.py
+   additional_scripts/run_gcpr24_eval.py
+   additional_scripts/eval_penetration_errors.py
+   additional_scripts/eval_penetration_scores.py
+   additional_scripts/splits_to_targets.py
+   cir/utils/geom/intersection_ops.py
+- All other source files originate from the CIR repository. We modified the following files (see the files for details
+  on the modifications):
+   cir/datasets/bop.py
+   cir/pose_models/raftse3.py
+   cir/utils/geom/ba.py
+   cir/utils/augmentation.py
+   cir/utils/pt_renderer.py
+
+The following files in the CIR repository were adapted from https://github.com/lukemelas/EfficientNet-PyTorch by the CIR
+authors. The original code is licensed under the Apache License, Version 2.0 (see EfficientNet-LICENSE).
+   cir/pose_models/efficientnet.py
+   cir/pose_models/efficientnet_utils.py
+
+-------------------
+
+For evaluation, we rely on code from the bop toolkit at
+https://github.com/thodan/bop_toolkit/tree/37d79c4c5fb027da92bc40f36b82ea9b7b197f1d, licensed under the MIT license
+(see https://github.com/thodan/bop_toolkit/tree/37d79c4c5fb027da92bc40f36b82ea9b7b197f1d/LICENSE)
+The file additional_scripts/bop_toolkit.patch is intended to patch the bop toolkit repo at the specified commit and
+contains code snippets from the repository.
