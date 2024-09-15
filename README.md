@@ -4,7 +4,8 @@ This repository contains the source code for our paper:
 
 Michael Strecke and Joerg Stueckler<br/>
 Physically Plausible Object Pose Refinement in Cluttered Scenes<br/>
-Accepted for the German Conference on Pattern Recognition (GCPR) 2024
+Accepted for the German Conference on Pattern Recognition (GCPR) 2024<br/>
+A preprint of the paper is available [here](https://ev.is.mpg.de/uploads_file/attachment/attachment/776/gcpr2024_physics_pose_refinement_submitted_version_compressed.pdf)  
 
 If you use the code provided in this repository for your research, please cite our paper as:
 ```
